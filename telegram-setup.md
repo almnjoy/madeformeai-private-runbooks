@@ -1,210 +1,285 @@
-# telegram_runbook.md
+# Internal Agent Runbook
 
-# OpenClaw Telegram Setup Runbook for a Non-Technical Human
+This file is for MadeForMeAI/OpenClaw setup agents. It is not customer-facing documentation.
 
-This runbook teaches an AI setup bot how to guide a very non-technical human through connecting Telegram to OpenClaw / MadeForMeAI.
+---
 
-Assumptions:
+# OpenClaw Telegram Setup Runbook
 
-- The setup bot has **no web access**.
-- The human has **no CLI / terminal access**.
-- The human can use Telegram.
-- The human can chat with their OpenClaw / MadeForMeAI assistant in the web UI.
-- The setup bot may be able to edit OpenClaw config through internal tools.
-- The human should never be asked to run commands.
+Purpose: guide the setup agent through connecting a user-created Telegram bot to their OpenClaw instance. The agent does all technical steps. The user only creates the bot in Telegram and pastes the token.
 
-Primary goal:
+**Environment:** K8s pod, no CLI access for user, agent has elevated bash tools.
 
-> Help the human create a Telegram bot with BotFather, paste the bot token into the private setup chat, then connect and verify Telegram inside OpenClaw.
+---
+
+## Goal
+
+The user can message their AI from Telegram like a normal chat.
+
+Successful final state:
+
+```text
+Telegram │ ON │ OK │ configured
+```
+
+User sends a message to their Telegram bot and the AI replies.
 
 ---
 
 ## Golden rule
 
-Do **not** teach the human about servers, APIs, JSON, Docker, config files, polling, webhooks, or terminals.
+Do not teach the user about servers, JSON, Docker, config files, or terminals.
 
-Say only what they need to click, type, copy, or paste.
-
-Good:
-
-> Open Telegram, search for @BotFather, and send `/newbot`.
-
-Bad:
-
-> Configure `channels.telegram.botToken` in your OpenClaw gateway config and restart the service.
+Good: "Open Telegram, search @BotFather, send `/newbot`."  
+Bad: "Configure `channels.telegram.botToken` in openclaw.json."
 
 ---
 
-## If the user only says “setup telegram”
+## Step 0 — Install the Telegram plugin
 
-Reply exactly like this:
+Before anything else, verify the plugin is globally installed:
 
-> Here’s what to do:
+```bash
+openclaw plugins list
+```
+
+If `telegram` is not in the output or shows as not installed, install it:
+
+```bash
+openclaw plugins install telegram
+```
+
+Expected output:
+
+```text
+Installed plugin: telegram
+Restart the gateway to load plugins.
+```
+
+Then restart the gateway (see Step 4 for restart pattern). Confirm Telegram appears in the plugin list after restart before proceeding.
+
+---
+
+## Step 1 — User creates a Telegram bot
+
+Say to the user:
+
+> Here's what to do:
 >
 > 1. Open Telegram.
-> 2. Tap the search bar.
-> 3. Search for **BotFather**.
-> 4. Open the account whose username is exactly **@BotFather**.
-> 5. Send this message: `/newbot`
-> 6. BotFather will ask for a name. Type something friendly, like `My AI Assistant`.
-> 7. BotFather will ask for a username. Type something unique that ends in `bot`, like `jamie_ai_helper_bot`.
-> 8. BotFather will give you a long token. Copy the whole token and paste it here.
+> 2. Tap the search bar and search for **BotFather**.
+> 3. Open the account whose username is exactly **@BotFather**.
+> 4. Send: `/newbot`
+> 5. BotFather asks for a name — something friendly like `My AI Assistant`.
+> 6. BotFather asks for a username — must be unique and end in `bot`, like `yourname_ai_helper_bot`.
+> 7. BotFather gives you a long token. Copy the whole token and paste it here.
 >
 > The token is like a password. Only paste it in this private setup chat.
 
-Then stop and wait for the token.
-
-Do not continue until the human provides the token.
+Wait for the token. Do not continue until the user provides it.
 
 ---
 
-## What Telegram setup means, in plain English
+## How to recognize a valid token
 
-If the human asks what is happening, say:
-
-> Telegram connects through a private bot. You create the bot inside Telegram, then I connect that bot to your AI. After that, you can message your AI from Telegram like a normal chat.
-
-If they ask “Is this an app?” say:
-
-> No extra app is needed. It works inside Telegram.
-
-If they ask “What is BotFather?” say:
-
-> BotFather is Telegram’s official tool for creating bots. It is just a Telegram chat you message.
-
-If they ask “What is a token?” say:
-
-> The token is the private key that lets your AI control the Telegram bot. Treat it like a password.
-
----
-
-## Step-by-step human script
-
-Use these exact messages when guiding the human.
-
-### Step 1 — Open BotFather
-
-Say:
-
-> Open Telegram.
->
-> Tap the search bar at the top.
->
-> Type: `BotFather`
->
-> Open the result whose username is exactly `@BotFather`.
-
-If they are unsure which one is correct, say:
-
-> The correct one is Telegram’s official BotFather. The username must be exactly `@BotFather`.
-
-### Step 2 — Start creating a bot
-
-Say:
-
-> In the BotFather chat, send this message:
->
-> `/newbot`
-
-### Step 3 — Choose the bot display name
-
-Say:
-
-> BotFather will ask for a name.
->
-> This is the friendly name people see.
->
-> You can type something like:
->
-> `My AI Assistant`
-
-If they ask what name to use, suggest:
-
-> Use your name plus AI, like `Jamie AI` or `Sarah Assistant`.
-
-### Step 4 — Choose the bot username
-
-Say:
-
-> BotFather will ask for a username.
->
-> This must be unique and must end with `bot`.
->
-> Try something like:
->
-> `yourname_ai_helper_bot`
-
-If Telegram says the username is taken, say:
-
-> That username is already taken. Try adding your initials or numbers before `bot`.
->
-> Example:
->
-> `yourname_ai_helper_247_bot`
-
-### Step 5 — Copy the token
-
-Say:
-
-> When the bot is created, BotFather will send a message with a long token.
->
-> Copy the whole token and paste it here.
->
-> It usually looks like numbers, then a colon, then a long mix of letters and numbers.
-
-Privacy reminder:
-
-> The token is like a password. Do not post it publicly or send it to anyone else.
-
----
-
-## How to recognize the token
-
-A Telegram bot token usually looks roughly like this:
+A Telegram bot token looks like:
 
 ```text
 1234567890:AAExampleLongMixedLettersAndNumbers
 ```
 
-The exact token will be different.
+- Numbers at the start
+- One colon `:`
+- Long alphanumeric string after the colon
 
-A good token usually has:
+If the user pastes something that doesn't match this pattern, redirect:
 
-- numbers at the beginning
-- one colon `:`
-- a long string after the colon
-
-If the human pastes something that does not look like a token, say:
-
-> That does not look like the bot token yet. In the BotFather chat, look for the message that says something like “Use this token to access the HTTP API.” Copy the long line under that and paste it here.
-
-Do not shame the user. Just redirect them.
+> That doesn't look like the bot token yet. In the BotFather chat, look for the message that says "Use this token to access the HTTP API." Copy the long line under that and paste it here.
 
 ---
 
-## Internal setup instructions for the AI setup bot
+## Step 2 — Write Telegram config to openclaw.json
 
-These are for the setup bot, not the human.
+After receiving the token, do NOT echo it back. Write it directly to config.
 
-After the human provides the Telegram token:
+Use bash to merge Telegram config into openclaw.json:
 
-1. Do not repeat the token back.
-2. Save it securely in OpenClaw Telegram configuration.
-3. Enable Telegram.
-4. Use safe direct-message access by default.
-5. Restart or reload OpenClaw if required.
-6. Ask the human to send a first message to the new Telegram bot.
-7. Approve only the expected Telegram pairing request.
-8. Verify that Telegram replies.
+```bash
+node -e "
+const fs = require('fs');
+const path = '/home/node/.openclaw/openclaw.json';
+const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+config.channels = config.channels || {};
+config.channels.telegram = {
+  ...(config.channels.telegram || {}),
+  enabled: true,
+  botToken: 'REPLACE_WITH_TOKEN',
+  dmPolicy: 'pairing',
+  groupPolicy: 'allowlist'
+};
+config.plugins = config.plugins || {};
+config.plugins.entries = config.plugins.entries || {};
+config.plugins.entries.telegram = { enabled: true };
+fs.writeFileSync(path, JSON.stringify(config, null, 2));
+console.log('Config written.');
+"
+```
 
-Recommended OpenClaw Telegram settings for a simple private user setup:
+Replace `REPLACE_WITH_TOKEN` with the actual token value.
+
+Do not print the token in any output or confirmation message.
+
+Tell the user:
+
+> Got it — I'm connecting Telegram now. I won't repeat the token back because it works like a password.
+
+---
+
+## Step 3 — Verify config was written correctly
+
+Check the Telegram section is present (without printing the token):
+
+```bash
+node -e "
+const fs = require('fs');
+const config = JSON.parse(fs.readFileSync('/home/node/.openclaw/openclaw.json', 'utf8'));
+const t = config.channels && config.channels.telegram;
+console.log('enabled:', t && t.enabled);
+console.log('botToken set:', !!(t && t.botToken));
+console.log('dmPolicy:', t && t.dmPolicy);
+"
+```
+
+Expected:
+
+```text
+enabled: true
+botToken set: true
+dmPolicy: pairing
+```
+
+---
+
+## Step 4 — Restart the gateway
+
+After writing config, restart the gateway so Telegram loads:
+
+```bash
+openclaw gateway restart
+```
+
+**K8s note:** In the containerized K8s environment, `openclaw gateway restart` may report "service disabled" because the process is managed externally. This is expected. Check status anyway:
+
+```bash
+openclaw status --deep
+```
+
+If status doesn't show Telegram yet and the gateway CLI says service disabled, do a full process restart:
+
+```bash
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
+```
+
+Kubernetes will automatically restart the pod. Wait 15–30 seconds, then check:
+
+```bash
+openclaw status --deep
+```
+
+---
+
+## Step 5 — Verify Telegram is configured
+
+```bash
+openclaw status --deep
+```
+
+Look for:
+
+```text
+Telegram │ ON │ OK │ configured
+```
+
+Also check plugin count in the startup log — Telegram should now appear in the "N plugins" line.
+
+If Telegram shows errors, check that the bot token is valid by looking at gateway logs:
+
+```bash
+openclaw logs --lines 50
+```
+
+Common error: "Unauthorized" — means the token is invalid. Ask user to go back to BotFather, use `/mybots`, and reset the token.
+
+---
+
+## Step 6 — User sends first message to the bot
+
+Tell the user:
+
+> Open Telegram and search for the bot username you created.
+>
+> Tap the bot, then tap **Start** — or just send:
+>
+> `hello`
+
+Wait for the pairing request to appear. Because `dmPolicy` is set to `pairing`, the bot will reply to the user with a pairing code like `ABC123XY`.
+
+The user will see something like:
+
+> OpenClaw: pairing required. Your code: ABC123XY. Ask the bot owner to approve it.
+
+---
+
+## Step 7 — Approve the Telegram pairing request
+
+List pending pairing requests:
+
+```bash
+openclaw pairing list telegram
+```
+
+You should see the user's Telegram number and their pairing code.
+
+Approve it:
+
+```bash
+openclaw pairing approve telegram <CODE>
+```
+
+Replace `<CODE>` with the code shown in the pairing list.
+
+Tell the user:
+
+> I see your Telegram message. I'm approving your chat so your AI can reply there.
+
+---
+
+## Step 8 — Verify Telegram replies
+
+Ask user:
+
+> Send this to your Telegram bot:
+>
+> `Can you hear me?`
+
+Expected: The AI replies inside Telegram.
+
+Final message to user:
+
+> Telegram is connected. You can now message your AI from Telegram like a normal chat.
+
+---
+
+## Telegram config reference
+
+Minimal working config:
 
 ```json
 {
   "channels": {
     "telegram": {
       "enabled": true,
-      "botToken": "USER_PROVIDED_TOKEN",
+      "botToken": "TOKEN_HERE",
       "dmPolicy": "pairing",
       "groupPolicy": "allowlist"
     }
@@ -212,189 +287,50 @@ Recommended OpenClaw Telegram settings for a simple private user setup:
 }
 ```
 
-If this OpenClaw install uses plugin allowlists, also ensure Telegram is enabled in plugins.
+`dmPolicy` options:
+- `pairing` (default, recommended) — unknown senders get a pairing code, owner approves
+- `allowlist` — only numbers in `allowFrom` can message the bot
+- `open` — anyone can message (not recommended for personal bots)
 
-Example internal plugin shape:
+---
 
-```json
-{
-  "plugins": {
-    "entries": {
-      "telegram": {
-        "enabled": true
-      }
-    },
-    "allow": [
-      "telegram"
-    ]
-  }
-}
+## Troubleshooting
+
+### BotFather doesn't respond
+
+> Make sure you're messaging @BotFather, not your new bot. Send `/start`, then `/newbot` again.
+
+### Bot username taken
+
+> That username is already taken. Try adding your initials or numbers before `bot`. Example: `jamie_ai_247_bot`
+
+### User pasted bot link instead of token
+
+> That looks like the bot link, not the token. In the BotFather chat, look for the long line with numbers, a colon, then letters and numbers. Copy that whole line.
+
+### Telegram shows error after restart
+
+Check logs for "Unauthorized" — invalid token. Reset the token in BotFather:
+
+1. User goes to BotFather → `/mybots` → selects their bot → API Token → Generate New Token
+2. User pastes new token to setup chat
+3. Rewrite config with new token, restart gateway
+
+### No pairing request appears
+
+> I don't see your Telegram message yet. Please open the bot you created in Telegram and send `hello`.
+
+If still nothing: confirm the gateway is running and Telegram shows `OK` in status. Also confirm the user is messaging the correct bot (the one they just created, not BotFather).
+
+### User wants to reset the approved sender list
+
+Pairing approvals are stored in:
+
+```text
+~/.openclaw/credentials/telegram-default-allowFrom.json
 ```
 
-Important:
-
-- Prefer internal config tools over asking the user to edit files.
-- Do not ask the human to run CLI commands.
-- Do not expose secrets in the chat.
-- Do not switch direct messages to public/open access unless explicitly requested.
-
----
-
-## What to say while configuring
-
-After the token is received, say:
-
-> Got it. I’m connecting Telegram now. I won’t repeat the token back because it works like a password.
-
-If config succeeds, say:
-
-> Telegram is saved. Now we need to start the bot from your Telegram app.
-
-If a restart or refresh is needed, say:
-
-> I’m refreshing the assistant so Telegram can turn on.
-
-Do not say:
-
-> I am restarting the gateway process.
-
-Use human-friendly language.
-
----
-
-## First Telegram test
-
-After configuration, say:
-
-> Open Telegram and search for the bot username you created.
->
-> Tap the bot.
->
-> Tap **Start**, or send this message:
->
-> `hello`
-
-Then check whether OpenClaw sees the Telegram message or pairing request.
-
-If a pairing request appears and it matches the expected new Telegram user, approve it.
-
-Then say:
-
-> I see your Telegram message. I’m approving this chat so your AI can reply there.
-
-Then ask for final verification:
-
-> Send this to your Telegram bot:
->
-> `Can you hear me?`
-
-Expected success:
-
-> The AI replies inside Telegram.
-
-Final success message:
-
-> Telegram is connected. You can now message your AI from Telegram like a normal chat.
-
----
-
-## Pairing explanation for humans
-
-If the user asks why approval is needed, say:
-
-> Pairing is a safety step. It makes sure only your Telegram account can talk to your AI.
-
-If they ask how long it takes, say:
-
-> Usually less than a minute after you send the first message to the bot.
-
-If no pairing appears, say:
-
-> I do not see the Telegram message yet. Please open the bot in Telegram and send `hello` again.
-
----
-
-## Troubleshooting scripts
-
-### Problem: Human cannot find BotFather
-
-Say:
-
-> In Telegram, tap the search bar and type `BotFather`.
->
-> The username must be exactly `@BotFather`.
->
-> If you see several results, choose the official one with that exact username.
-
-### Problem: BotFather does not respond
-
-Say:
-
-> Make sure you are messaging `@BotFather`, not your new bot.
->
-> Send `/start`, then send `/newbot` again.
-
-### Problem: Bot username is taken
-
-Say:
-
-> That username is already taken. Telegram usernames have to be unique.
->
-> Try adding your initials or a few numbers before `bot`.
->
-> Example: `jamie_ai_247_bot`
-
-### Problem: Username does not end in bot
-
-Say:
-
-> Telegram requires bot usernames to end with `bot`.
->
-> Try something like:
->
-> `jamie_ai_helper_bot`
-
-### Problem: Human pasted the bot link instead of token
-
-Say:
-
-> That looks like the bot link, not the token.
->
-> In the BotFather chat, look for the long line that has numbers, a colon, then letters and numbers. Copy that whole line and paste it here.
-
-### Problem: Human is worried about pasting the token
-
-Say:
-
-> That is a reasonable concern. The token is sensitive, like a password. Only paste it here if this is your private setup chat. I will use it only to connect Telegram and I will not repeat it back.
-
-### Problem: Telegram is connected but no reply comes back
-
-Say:
-
-> Telegram is saved, but your Telegram account may not be approved yet.
->
-> Open your new bot in Telegram and send `hello`.
->
-> I’ll check for the pairing after that.
-
-### Problem: Still no pairing appears
-
-Say:
-
-> I still do not see the Telegram message.
->
-> Please check that you are messaging the new bot you created, not BotFather.
->
-> The bot username should be the one you chose that ends in `bot`.
-
-### Problem: User wants to reset and start over
-
-Say:
-
-> No problem. Open BotFather, send `/mybots`, choose your bot, then use the token option to create or copy a token again.
->
-> Paste the new token here when you have it.
+To remove a sender, edit the file and remove their entry, then restart the gateway.
 
 ---
 
@@ -402,65 +338,28 @@ Say:
 
 Do not set up group access automatically.
 
-If the user says they want the AI in a Telegram group, ask one question:
+If user asks for the AI in a Telegram group:
 
-> Do you want the AI to reply only when someone mentions it, or reply to every message in the group?
+> Do you want the AI to reply only when mentioned, or reply to every message?
 
-Recommended answer:
-
-> I recommend “only when mentioned” so it does not interrupt the group.
-
-Explain simply:
-
-> Telegram groups have extra safety settings. Direct messages are easier. Groups need permission rules so the AI does not reply in places it should not.
+Recommended answer: mention-only (`requireMention: true` in group config).
 
 Safe group defaults:
-
-- Require mention in groups.
-- Do not allow every group by default.
-- Do not allow every user by default unless the owner explicitly wants that.
-- Do not join or approve unknown groups.
-
-If the bot must see every group message, explain:
-
-> Telegram may hide normal group messages from bots unless privacy mode is changed or the bot is made an admin. I can guide that separately if you want group behavior.
+- Require mention
+- Do not allow all groups by default
+- Do not allow all senders by default
 
 ---
 
-## Privacy and safety rules
+## Success checklist
 
-Always follow these:
+Setup is complete only when ALL are true:
 
-1. Treat the Telegram token like a password.
-2. Never repeat the full token back to the user.
-3. Never post the token in another channel.
-4. Never approve unknown Telegram users.
-5. Never approve unknown Telegram groups.
-6. Never make the bot public/open unless the owner clearly asks for a public bot.
-7. Prefer one-owner direct-message setup first.
-8. Keep instructions short and step-by-step.
-
----
-
-## Exact success checklist
-
-Telegram setup is complete only when all are true:
-
-- The human created a bot with BotFather.
-- The human pasted the bot token into the private setup chat.
-- OpenClaw Telegram config is enabled with the token.
-- The human opened the new Telegram bot and sent a message.
-- The expected Telegram user was paired/approved.
-- The AI replied inside Telegram.
+- Plugin is globally installed and appears in openclaw status
+- Telegram config is written with valid bot token
+- Gateway is running and Telegram shows `ON │ OK`
+- User sent a first message to the bot
+- Pairing request was approved
+- AI replied inside Telegram
 
 If any item is missing, do not say setup is complete.
-
----
-
-## Final answer when complete
-
-Say:
-
-> Telegram is connected. You can now message your AI from Telegram like a normal chat.
-
-Do not add technical details unless the user asks.

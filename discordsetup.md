@@ -37,18 +37,19 @@ Intents: messageContent=enabled guildMembers=enabled presence=enabled
 
 If the user asks to set up Discord:
 
-1. Confirm this is for the user's own Discord server/app, not a MadeForMeAI-owned Discord server.
-2. Explain that Discord requires a bot token from the Discord Developer Portal.
-3. Help the user create a Discord application and bot.
-4. Tell the user to enable required privileged intents.
-5. Ask whether they want basic chat permissions or admin/support permissions.
-6. Generate or provide a bot invite URL with the right permissions.
-7. Have the user invite the bot to their server.
-8. Add the bot token to OpenClaw with `openclaw channels add --channel discord --bot-token ...`.
-9. Restart/reload the gateway if needed.
-10. Verify with `openclaw channels list`, `openclaw channels capabilities --channel discord`, and `openclaw status --deep`.
-11. Send a test message or ask the user to mention the bot in Discord.
-12. If the token was pasted in chat, tell the user to rotate it after setup.
+1. Install the Discord plugin globally if not already installed (`openclaw plugins install discord`).
+2. Confirm this is for the user's own Discord server/app, not a MadeForMeAI-owned Discord server.
+3. Explain that Discord requires a bot token from the Discord Developer Portal.
+4. Help the user create a Discord application and bot.
+5. Tell the user to enable required privileged intents.
+6. Ask whether they want basic chat permissions or admin/support permissions.
+7. Generate or provide a bot invite URL with the right permissions.
+8. Have the user invite the bot to their server.
+9. Add the bot token to OpenClaw config (via bash file write or `openclaw channels add --channel discord --bot-token ...`).
+10. Restart the gateway.
+11. Verify with `openclaw status --deep`.
+12. Ask the user to mention the bot in Discord to confirm inbound works.
+13. If the token was pasted in chat, tell the user to rotate it after setup.
 
 ---
 
@@ -79,6 +80,32 @@ Optional but useful:
 - The server/guild name.
 - The channel where the bot should be tested.
 - Whether the bot should respond in public channels, threads, or DMs.
+
+---
+
+## Step 0 — Install the Discord plugin
+
+Before anything else, verify the plugin is globally installed:
+
+```bash
+openclaw plugins list
+```
+
+If `discord` is not installed or not showing in the list:
+
+```bash
+openclaw plugins install discord
+```
+
+Then restart the gateway and confirm Discord appears before continuing.
+
+**K8s restart pattern:** `openclaw gateway restart` may say "service disabled" — that's expected. Check `openclaw status --deep` anyway. If the gateway CLI fails, do a full process restart:
+
+```bash
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
+```
+
+Wait 15–30 seconds for K8s to bring the pod back up.
 
 ---
 
@@ -192,37 +219,40 @@ If Discord says the user cannot add the bot, they need a server admin to approve
 
 ## Step 5 — Add Discord to OpenClaw
 
-Canonical CLI command:
+**Primary method — direct config write (confirmed working in K8s):**
+
+```bash
+node -e "
+const fs = require('fs');
+const path = '/home/node/.openclaw/openclaw.json';
+const config = JSON.parse(fs.readFileSync(path, 'utf8'));
+config.channels = config.channels || {};
+config.channels.discord = {
+  ...(config.channels.discord || {}),
+  enabled: true,
+  botToken: 'REPLACE_WITH_TOKEN'
+};
+config.plugins = config.plugins || {};
+config.plugins.entries = config.plugins.entries || {};
+config.plugins.entries.discord = { enabled: true };
+fs.writeFileSync(path, JSON.stringify(config, null, 2));
+console.log('Config written.');
+"
+```
+
+Replace `REPLACE_WITH_TOKEN` with the actual bot token. Do not echo the token in any confirmation.
+
+**Alternative — CLI (may also work):**
 
 ```bash
 openclaw channels add --channel discord --bot-token <DISCORD_BOT_TOKEN>
 ```
 
-For a named account:
-
-```bash
-openclaw channels add --channel discord --account default --name "Discord" --bot-token <DISCORD_BOT_TOKEN>
-```
-
-If the environment supports env-backed credentials, prefer:
-
-```bash
-openclaw channels add --channel discord --use-env
-```
-
-Expected success may look like:
+Expected output if CLI works:
 
 ```text
 Discord default: configured, enabled
 ```
-
-If the token is provided in a file instead of pasted directly:
-
-```bash
-openclaw channels add --channel discord --token-file /path/to/token-file
-```
-
-Do not leave token files lying around unless the instance intentionally stores secrets that way.
 
 ---
 
@@ -305,8 +335,10 @@ Discord │ ON │ OK │ configured
 If the status is not OK, inspect logs:
 
 ```bash
-openclaw channels logs --channel discord --lines 200
+openclaw logs --lines 200
 ```
+
+(Note: `openclaw channels logs --channel discord` may not exist in this version — use `openclaw logs` and filter for Discord entries.)
 
 Common problems are listed below.
 
@@ -314,30 +346,14 @@ Common problems are listed below.
 
 ## Step 9 — Test Discord from OpenClaw
 
-First resolve or identify the target channel.
+**Inbound test (primary):** Have the user mention the bot in Discord (Step 10). This is the most reliable confirmation.
 
-If the setup agent already knows the Discord channel ID, use it directly.
+**Outbound test (optional):** If you need to test outbound first, ask the user to:
 
-To inspect channels and IDs, use:
+1. Discord → User Settings → Advanced → enable **Developer Mode**
+2. Right-click the target channel → **Copy Channel ID**
 
-```bash
-openclaw channels resolve --channel discord --kind group <channel-or-server-name>
-```
-
-If name resolution is unreliable, ask the user to copy the Discord channel ID:
-
-1. Discord → **User Settings → Advanced**
-2. Turn on **Developer Mode**
-3. Right-click the target channel
-4. Click **Copy Channel ID**
-
-Then send a test message:
-
-```bash
-openclaw message send --channel discord --target <CHANNEL_ID> --message "Discord is connected."
-```
-
-If the message appears in Discord, outbound sending works.
+Then use the gateway's send capabilities via the agent's tools or via bash if a send command is available. Note: `openclaw message send` may not exist as a CLI command in this version — verify before using. If unavailable, rely on the inbound test in Step 10 as the primary verification.
 
 ---
 
@@ -530,10 +546,10 @@ openclaw gateway status
 openclaw status --deep
 ```
 
-3. Check Discord logs:
+3. Check logs:
 
 ```bash
-openclaw channels logs --channel discord --lines 200
+openclaw logs --lines 200
 ```
 
 4. Confirm the bot token is valid.

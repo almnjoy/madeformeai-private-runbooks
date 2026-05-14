@@ -64,12 +64,12 @@ Do NOT echo the password back. Store immediately in OpenClaw config under the iM
 
 ### 2c — Network accessibility check
 
-The BlueBubbles server URL must be reachable from the MadeForMeAI instance (running in a VPC). If user is on a home network without port forwarding:
+The BlueBubbles server URL must be reachable from the MadeForMeAI instance (running in K8s on Hetzner). If user is on a home network without port forwarding:
 
 - **Recommended path:** BlueBubbles + Cloudflare Tunnel (free) — gives a stable public HTTPS URL
 - **Alternative:** BlueBubbles + ngrok — works but URL changes on restart unless paid plan
 
-If user's URL is a local IP (`192.168.x.x` or `.local`): The VPC cannot reach it. Tell user:
+If user's URL is a local IP (`192.168.x.x` or `.local`): The K8s cluster cannot reach it. Tell user:
 > "Your BlueBubbles server needs a public URL so your AI can reach it. BlueBubbles has built-in support for Cloudflare Tunnel — it's free and takes about 5 minutes. In the BlueBubbles app, go to Settings → Server → Cloudflare Tunnel and enable it. That will give you a permanent public URL. Bring that URL back here."
 
 ### 2d — Write config and restart

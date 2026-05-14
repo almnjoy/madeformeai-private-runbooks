@@ -5,13 +5,20 @@
 **CLI required:** No (agent-side config only)  
 **Model requirements:** Works on small/slow models
 
+> **IMPORTANT: Tailscale is NOT part of the standard MadeForMeAI deployment.**
+>
+> Standard MadeForMeAI user pods do NOT include Tailscale. The standard network path is:
+> Traefik ingress → Authentik ForwardAuth → OpenClaw gateway pod.
+>
+> This runbook only applies if Tailscale was explicitly added to a user's pod as a custom sidecar. If a user reports "Tailscale disconnecting" and you are not sure whether Tailscale was intentionally set up for their instance, escalate to Dustin before proceeding.
+
 ---
 
 ## What this runbook does
 
-Fixes Tailscale dropping out and requiring manual reconnection every time the user's OpenClaw container or VPC node restarts. After this fix, Tailscale should reconnect automatically on boot without user intervention.
+Fixes Tailscale dropping out and requiring manual reconnection every time the user's OpenClaw container or K8s pod restarts. After this fix, Tailscale should reconnect automatically on boot without user intervention.
 
-**Context:** MadeForMeAI instances run in Docker containers on Kubernetes. Tailscale is used as a secure tunnel between the user's instance and external resources (or for the browser extension remote access path). Without persistence, Tailscale loses auth state on every container restart.
+**Context:** If Tailscale was added to a user's pod as a custom sidecar, auth state must be stored on a persistent volume. Without persistence, Tailscale loses auth state on every container restart.
 
 ---
 

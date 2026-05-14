@@ -5,6 +5,12 @@
 **CLI required:** No  
 **Model requirements:** Works on small/slow models (GPT-4.1-nano, DeepSeek)
 
+> **STATUS: UNVERIFIED — NOT TESTED IN PRODUCTION**
+> This runbook was auto-generated and has not been validated against the current MadeForMeAI K8s environment.
+> The "Gog skill" references and `openclaw connect gdrive` commands are unconfirmed.
+> Before following this runbook, verify a Google Drive MCP connector is available on the user's instance.
+> If commands fail or the skill doesn't exist, escalate to Dustin.
+
 ---
 
 ## What this runbook does
