@@ -256,21 +256,103 @@ Discord default: configured, enabled
 
 ---
 
-## Step 6 — Restart or reload the gateway
+## Step 6 — Restart the gateway (full process restart required)
 
-After adding Discord, restart or reload the gateway so the channel connects.
+After adding Discord, do a **full process restart** — not just a SIGUSR1 reload. A reload-only restart causes a double-reconnect race where Discord resolves channels twice and the second pass drops newly added channels.
 
 ```bash
-openclaw gateway restart
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
 ```
 
-If the service is disabled or externally managed, check status anyway:
+Wait 15–30 seconds for K8s to bring the process back up, then verify:
 
 ```bash
 openclaw status --deep
 ```
 
-In container-managed setups, the gateway may reconnect automatically.
+**Why not SIGUSR1 / `openclaw gateway restart`?**
+A SIGUSR1 reload triggers two `discord channels resolved` events in quick succession. The first picks up the new config, the second overwrites it from a stale internal state. A full process kill forces a clean init from disk. Always use the kill method when adding or changing channel config.
+
+---
+
+## Step 6b — Adding a channel to an existing Discord setup
+
+Use this when Discord is already connected (bot token in place) and the user wants to add a new guild channel (e.g. pair `#support` or `#test`).
+
+**Do NOT use `plugins.entries.discord.channels` — that key is invalid and doctor will strip it every time.**
+
+The correct config path is:
+```
+channels.discord.guilds.GUILD_ID.channels.CHANNEL_ID
+```
+
+**Step 1 — Get the IDs**
+
+The user must enable Developer Mode in Discord (User Settings → Advanced → Developer Mode), then:
+- Right-click the server name → Copy Server ID (guild ID)
+- Right-click the target channel → Copy Channel ID
+
+**Step 2 — Write directly to openclaw.json using Python3** (`jq` is not available in the container)
+
+```bash
+python3 - <<'PY'
+import json, os
+p = os.path.expanduser('~/.openclaw/openclaw.json')
+data = json.load(open(p))
+
+GUILD_ID   = 'REPLACE_WITH_GUILD_ID'
+CHANNEL_ID = 'REPLACE_WITH_CHANNEL_ID'
+
+data.setdefault('channels', {}).setdefault('discord', {}) \
+    .setdefault('guilds', {}).setdefault(GUILD_ID, {}) \
+    .setdefault('channels', {})[CHANNEL_ID] = {
+        'enabled': True,
+        'requireMention': False
+    }
+
+# Also set guild-level requireMention to false if not already set
+data['channels']['discord']['guilds'][GUILD_ID].setdefault('requireMention', False)
+
+with open(p, 'w') as f:
+    json.dump(data, f, indent=2)
+print('Written. Verifying...')
+result = data['channels']['discord']['guilds'][GUILD_ID]['channels'][CHANNEL_ID]
+print(result)
+PY
+```
+
+Replace `REPLACE_WITH_GUILD_ID` and `REPLACE_WITH_CHANNEL_ID` with the actual IDs. Do not echo any tokens.
+
+**Step 3 — Validate and fix with doctor**
+
+```bash
+openclaw doctor --fix --yes
+openclaw config validate
+```
+
+Doctor will report `Config valid` if the write was correct. If it reports an unrecognized key error, check that nothing was written to `plugins.entries.discord.channels` — that path does not exist in the schema.
+
+**Step 4 — Full process restart (mandatory)**
+
+```bash
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
+```
+
+Wait 15–30 seconds for K8s to restart the process.
+
+**Step 5 — Verify the channel resolved correctly**
+
+Check the logs for TWO occurrences of `discord channels resolved`. The **second** one is the stable state — the new channel must appear in both:
+
+```bash
+openclaw logs --limit 100 --plain --timeout 15000 | grep "discord channels resolved"
+```
+
+If the channel appears in the first log line but not the second, the restart was a SIGUSR1 reload (not a full kill). Repeat Step 4.
+
+**Step 6 — Test**
+
+Have the user send a message in the new channel without mentioning the bot (since `requireMention: false`). The assistant should respond.
 
 ---
 
@@ -446,6 +528,69 @@ Symptoms of missing Server Members Intent:
 
 ## Common issues
 
+### New channel drops out immediately after gateway reload
+
+Symptoms:
+
+- Channel appears in `discord channels resolved` log once, then disappears 2–5 seconds later
+- Config on disk is correct and passes `openclaw config validate`
+- Old channels still work fine; only newly added ones drop out
+- SIGUSR1 / `openclaw gateway restart` was used to reload
+
+Cause: SIGUSR1 triggers a reload but Discord's WS client reconnects twice. The first reconnect reads the fresh config (new channel in). The second reconnect resolves from a stale internal state (new channel gone). This is a known runtime behavior — the config is not the problem.
+
+Fix:
+
+1. Confirm the channel is still in the config on disk:
+
+```bash
+python3 -c "
+import json, os
+data = json.load(open(os.path.expanduser('~/.openclaw/openclaw.json')))
+guilds = data.get('channels', {}).get('discord', {}).get('guilds', {})
+print(json.dumps(guilds, indent=2))
+"
+```
+
+2. If the channel is there, do a full process kill (not reload):
+
+```bash
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
+```
+
+3. Wait 15–30 seconds for K8s restart.
+
+4. Verify both occurrences of `discord channels resolved` in the logs include the new channel:
+
+```bash
+openclaw logs --limit 100 --plain --timeout 15000 | grep "discord channels resolved"
+```
+
+Both lines must show the channel. If only the first shows it, the kill did not work — confirm the process actually died and restarted before checking logs.
+
+---
+
+### `plugins.entries.discord: Unrecognized key: "channels"` error
+
+Symptoms:
+
+- `openclaw config validate` or doctor reports this error
+- Gateway reload is skipped with `config reload skipped (invalid config)`
+
+Cause: Something wrote `plugins.entries.discord.channels[...]` to the config. That path does not exist in the schema. The correct path for channel config is `channels.discord.guilds.GUILD_ID.channels.CHANNEL_ID`.
+
+Fix:
+
+Run doctor to strip the invalid key:
+
+```bash
+openclaw doctor --fix --yes
+```
+
+Then re-add the channel using the Python3 script in Step 6b. Do not use the `plugins.entries.discord.channels` path.
+
+---
+
 ### Bot token rejected
 
 Symptoms:
@@ -603,7 +748,8 @@ Guide the user through Discord Developer Portal:
 
 Then run:
 openclaw channels add --channel discord --bot-token <DISCORD_BOT_TOKEN>
-openclaw gateway restart
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
+# Wait 20 seconds for K8s to restart the process, then:
 openclaw channels list
 openclaw channels capabilities --channel discord
 openclaw status --deep
