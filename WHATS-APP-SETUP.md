@@ -29,55 +29,54 @@ WhatsApp │ LINKED │ linked
 
 If the user asks to set up WhatsApp:
 
-1. Install the WhatsApp plugin.
-2. Restart the gateway so the plugin loads.
-3. Start the WhatsApp login flow.
-4. Capture the QR code.
-5. Convert the QR to a PNG if needed.
-6. Attach the PNG in chat.
-7. Tell the user to scan it from WhatsApp → Linked Devices.
-8. Verify with `openclaw status --deep`.
+1. Get openclaw version: `openclaw --version`
+2. Install matching plugin: `openclaw plugins install @openclaw/whatsapp@<VERSION> --force`
+3. Warn user: "Restarting gateway, ~30 seconds — send any message to continue."
+4. Kill gateway: `kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true`
+5. When user sends a message, verify plugin loaded: `openclaw status --deep`
+6. Capture QR via `script` (see Step 5 — direct exec won't work, TTY required)
+7. Run PNG converter, attach: `MEDIA:/home/node/.openclaw/media/whatsapp-login-qr.png`
+8. Tell user: WhatsApp → Settings → Linked Devices → Link a Device → scan QR.
+9. Verify: `openclaw status --deep` — expect `LINKED`.
 
 ---
 
-## Step 1 — Download / install WhatsApp plugin
+## Step 1 — Install WhatsApp plugin (version-matched)
 
-If your OpenClaw chat/control UI provides a `/download` shortcut, use:
-
-```text
-/download @openclaw/whatsapp
-```
-
-Canonical CLI command:
+Version mismatch causes `text-utility-runtime` crashes. Always match the installed openclaw version:
 
 ```bash
-openclaw plugins install @openclaw/whatsapp
+openclaw --version
+# Use that exact version in the install command below
+openclaw plugins install @openclaw/whatsapp@<VERSION> --force
 ```
 
-Expected success may look like this:
+Example if `openclaw --version` returns `1.4.2`:
+```bash
+openclaw plugins install @openclaw/whatsapp@1.4.2 --force
+```
+
+Expected success:
 
 ```text
 Installed plugin: whatsapp
 Restart the gateway to load plugins.
 ```
 
-Note: if the npm package is unavailable, OpenClaw may automatically use a bundled plugin path such as:
-
-```text
-/app/dist/extensions/whatsapp
-```
-
-That is okay.
-
 ---
 
 ## Step 2 — Restart gateway
 
+**IMPORTANT — warn the user first.** Before killing the gateway, send this message in chat:
+> "Restarting the gateway now to load the WhatsApp plugin — it will go offline for ~30 seconds. Send me any message after it comes back and I'll continue with the QR code step."
+
+Then kill and restart:
+
 ```bash
-openclaw gateway restart
+kill $(pgrep -f 'node.*dist/index.js') 2>/dev/null; true
 ```
 
-If that says the gateway service is disabled, start/restart it using whatever supervisor is used for the instance. In many containers, the gateway is already managed externally and may reconnect automatically.
+Wait 20–30 seconds. The gateway restarts automatically. Do NOT use `openclaw gateway restart` — in MadeForMeAI containers the gateway is managed externally and that command will error.
 
 Verify the plugin appears:
 
@@ -93,49 +92,31 @@ WhatsApp │ ON │ OK │ configured
 
 ---
 
-## Step 3 — Start WhatsApp QR login
+## Step 3 — Start WhatsApp QR login (TTY required)
 
-Run the login flow in a terminal/PTY so the QR renders correctly:
+**Critical:** `openclaw channels login --channel whatsapp` requires an interactive TTY. Running it directly in exec/tool context produces no output. Agents must use the `script` capture method in Step 5. There is no `whatsapp_login` tool and no `--qr-output` flag.
+
+Raw command (reference only — agents skip to Step 5):
 
 ```bash
 openclaw channels login --channel whatsapp
 ```
 
-For a named account:
-
-```bash
-openclaw channels login --channel whatsapp --account work
-```
-
-Expected output:
-
-```text
-Waiting for WhatsApp connection...
-Scan this QR in WhatsApp (Linked Devices):
-<terminal QR code>
-```
-
-Keep this command running while the user scans the QR.
-
 ---
 
 ## Step 4 — Best case: attach QR directly if OpenClaw provides media
 
-If the login command/tool returns a QR image file, attach it directly in chat:
+If a future OpenClaw version supports `--qr-output`, attach directly:
 
 ```text
 MEDIA:/path/to/whatsapp-login-qr.png
 ```
 
-Then tell the user:
-
-```text
-Open WhatsApp → Settings → Linked Devices → Link a Device, then scan this QR.
-```
+As of current versions, this flag does not exist. Use Step 5.
 
 ---
 
-## Step 5 — Fallback: capture terminal QR and convert to PNG
+## Step 5 — Capture terminal QR and convert to PNG
 
 Some OpenClaw versions print the QR as ANSI/block characters only. In that case, capture the terminal output and convert it to PNG.
 
