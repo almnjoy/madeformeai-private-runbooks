@@ -57,15 +57,22 @@ for FILE in IDENTITY.md SOUL.md AGENTS.md HEARTBEAT.md TOOLS.md package.json job
     "$BASE/$FILE" -o "$DEST/$FILE"
   echo "Written: $FILE"
 done
+
+# Fetch avatar asset
+mkdir -p "$DEST/assets"
+curl -sf -H "Authorization: Bearer $RUNBOOKS_READ_GITHUB_TOKEN" \
+  "$BASE/assets/Call.png" -o "$DEST/assets/Call.png"
+echo "Written: assets/Call.png"
 ```
 
-Verify all 8 files exist:
+Verify all 9 files exist:
 
 ```bash
 ls /home/node/.openclaw/workspace-job-agent/
+ls /home/node/.openclaw/workspace-job-agent/assets/
 ```
 
-Expected output should include all 8 files plus the `resumes/`, `runs/`, and `.secrets/` directories.
+Expected output should include all 8 template files plus `assets/Call.png` and the `resumes/`, `runs/`, and `.secrets/` directories.
 
 ---
 
@@ -86,7 +93,7 @@ new_agent = {
     "workspace": "/home/node/.openclaw/workspace-job-agent",
     "identity": {
         "name": "Job Search Agent",
-        "avatar": "assets/computer.png"
+        "avatar": "assets/Call.png"
     },
     "model": {
         "primary": "openrouter/google/gemini-2.5-flash"
@@ -194,4 +201,4 @@ If `curl` returns a non-zero exit code:
 Doctor or validate may reject the config if the `agents.list` entry has a bad field. Common causes:
 
 - `fastModeDefault` should be `false` (boolean), not `"false"` (string). The Python script handles this correctly — do not manually edit.
-- `avatar` path must be a relative path the gateway can resolve. `assets/computer.png` is a known-good value.
+- `avatar` path must be a relative path the gateway can resolve. `assets/Call.png` is the correct value for the job agent.
