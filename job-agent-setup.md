@@ -96,7 +96,11 @@ new_agent = {
         "avatar": "assets/Call.png"
     },
     "model": {
-        "primary": "openrouter/google/gemini-2.5-flash"
+        "primary": "openrouter/anthropic/claude-haiku-4-5",
+        "fallbacks": [
+            "openrouter/moonshotai/kimi-k2",
+            "openrouter/anthropic/claude-sonnet-4-6"
+        ]
     },
     "thinkingDefault": "off",
     "fastModeDefault": False
