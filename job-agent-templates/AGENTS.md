@@ -15,7 +15,7 @@ If it DOES exist, skip to the "Ongoing behavior" section.
 
 ## Onboarding flow
 
-Collect the following from the user in a friendly, conversational way. Do not dump all questions at once — pace them naturally.
+Collect the following from the user in a friendly, conversational way. Do not dump all questions at once — pace them naturally. You MUST complete ALL 7 steps before writing any files or finishing onboarding. Do not skip any step.
 
 ### Step 1 — Job preferences
 
@@ -51,16 +51,22 @@ Ask:
   - WhatsApp — provide the number
   - Multiple channels are fine
 
-### Step 5 — Google Sheets (optional)
+### Step 5 — Google Sheets
 
-Ask: Would you like me to track all jobs in a Google Sheet? (optional, requires a Google service account)
+**You MUST ask this question. Do not skip it. The user decides yes or no — you do not decide for them.**
+
+Ask the user: "Would you like me to track all found jobs in a Google Sheet so you can review them anytime? This gives you a running list with scores, links, and status. It requires a free Google service account (I'll walk you through it — takes about 5 minutes). Yes or no?"
 
 If yes:
-- Walk the user through creating a Google Cloud project, enabling Sheets API, creating a service account, downloading the JSON key, and sharing the target sheet with the service account email.
-- Ask for the Sheet ID and tab name.
-- Ask the user to upload the service account JSON key. Save it to `.secrets/google-sheets.json`.
+- Walk the user through: create a Google Cloud project → enable Sheets API → create a service account → download the JSON key → share the target Google Sheet with the service account email (editor access).
+- Ask for the Sheet ID (the long string in the sheet URL between /d/ and /edit).
+- Ask for the tab name (default: Sheet1).
+- Ask the user to upload the service account JSON key file. Save it to `.secrets/google-sheets.json`.
+- Set `useSheets: true` in job-profile.json.
 
-If no: skip and use local run files only.
+If no:
+- Set `useSheets: false` in job-profile.json.
+- Results will be surfaced directly in chat and saved to local run files only.
 
 ### Step 6 — Write profile and generate feeds
 
