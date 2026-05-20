@@ -66,12 +66,51 @@ If no: skip and use local run files only.
 
 Once all info is collected:
 
-1. Write `job-profile.json` with all collected settings.
-2. Generate `rss-feeds.json` — build Indeed RSS URLs from the user's job keywords and location.
-   Format: `https://rss.indeed.com/rss?q=KEYWORDS&l=LOCATION&sort=date&fromage=3`
-   Build 4–8 search variants covering different keyword combinations.
-3. Write `scoring-criteria.md` summarizing the user's green/yellow/red flags in plain text.
-4. Update `HEARTBEAT.md` with the schedule prompt based on the user's chosen cadence.
+1. Write `job-profile.json` with all collected settings (see schema below).
+
+2. Generate `rss-feeds.json` — pick RSS sources appropriate to the job category.
+   - Remote tech/dev/sales: include RemoteOK and We Work Remotely feeds.
+   - General / local / non-tech: write an empty array `[]` — web_search is the primary method.
+   - Do NOT generate Indeed RSS URLs. Indeed blocks automated requests (403).
+   - Keep the list small (2–4 feeds max). Fewer reliable feeds beat many broken ones.
+
+3. Do an immediate web_search pass to populate `fallback-jobs.json` with fresh results.
+   - Run 4–6 targeted queries using the user's job title keywords + location.
+   - Example queries (adapt to actual job type):
+     - `"cashier" "part time" jobs Chicago hiring 2025`
+     - `"retail associate" no experience required near me`
+     - `site:jobs.target.com OR site:careers.walmart.com cashier`
+     - `"solutions engineer" presales remote -senior`
+     - `"registered nurse" Chicago hospital hiring`
+   - For each search result, extract: title, company, url, description snippet, posted date.
+   - Write as a JSON array to `fallback-jobs.json`. Aim for 10–20 enriched entries.
+   - The runner always merges this file — it is the primary job source for most users.
+
+4. Write `scoring-criteria.md` summarizing the user's green/yellow/red flags in plain text.
+
+5. Update `HEARTBEAT.md` with the schedule prompt based on the user's chosen cadence.
+
+**job-profile.json schema (flat keys — do not nest these):**
+```json
+{
+  "ownerName": "Jane",
+  "jobTitle": "Cashier",
+  "location": "Chicago, IL",
+  "remote": false,
+  "greenFlags": ["retail", "cashier", "part time", "flexible hours", "entry level"],
+  "yellowFlags": ["management required"],
+  "redFlags": ["warehouse", "overnight only", "commission only"],
+  "notifyThreshold": 7,
+  "resumeFiles": [
+    { "filename": "jane_resume.pdf", "keywords": ["retail", "customer service"] }
+  ],
+  "useSheets": false,
+  "sheetId": "",
+  "sheetTab": "Jobs",
+  "credsPath": ".secrets/google-sheets.json",
+  "notificationChannels": []
+}
+```
 
 ### Step 7 — Confirm and hand off
 
@@ -87,25 +126,37 @@ Tell the user:
 
 ### Scheduled runs (triggered by heartbeat)
 
-1. Run `node job-runner.mjs` from the workspace directory.
-2. Read the output JSON from `./runs/`.
-3. If Google Sheets is configured, also run `node notify-digest.mjs` and send that output to the user's notification channel(s).
-4. If Sheets is not configured, use the run JSON to surface strong matches directly in chat.
-5. If no strong matches, send a brief quiet summary only.
+1. **Refresh fallback-jobs.json via web_search** — do this before every run, every time.
+   - Read `job-profile.json` to get current keywords and location.
+   - Run 4–6 web_search queries (same pattern as onboarding Step 6).
+   - Overwrite `fallback-jobs.json` with fresh results (10–20 entries, with full description text).
+   - The runner always merges this file — this is how the agent finds jobs for ANY job type.
+
+2. Run `node job-runner.mjs` from the workspace directory.
+
+3. Read the output JSON from `./runs/`.
+
+4. If Google Sheets is configured, also run `node notify-digest.mjs` and send that output to the user's notification channel(s).
+
+5. If Sheets is not configured, surface strong matches directly in chat.
+
+6. If no strong matches (nothing scored ≥ notifyThreshold), send a brief quiet summary only.
 
 ### On-demand run
 
 When the user says "run jobs now" or similar:
-1. Run `node job-runner.mjs`.
-2. Report strong matches immediately in chat.
+1. Refresh `fallback-jobs.json` via web_search (same as above — always do this first).
+2. Run `node job-runner.mjs`.
+3. Report strong matches immediately in chat.
 
 ### Profile updates
 
 When the user asks to update job preferences, scoring, feeds, or notification settings:
 1. Read the current `job-profile.json`.
 2. Apply changes.
-3. Regenerate `rss-feeds.json` and `scoring-criteria.md` if keywords or location changed.
-4. Confirm changes back to the user.
+3. Regenerate `rss-feeds.json` if job category changed significantly.
+4. Re-run web_search immediately with the updated keywords and overwrite `fallback-jobs.json`.
+5. Confirm changes back to the user.
 
 ### Resume updates
 
@@ -119,13 +170,14 @@ When the user uploads a new resume:
 ## Files reference
 
 ```text
-job-profile.json         — user preferences, credentials paths, schedule config
-rss-feeds.json           — list of RSS feed URLs to poll
+job-profile.json         — user preferences, credentials paths, schedule config (flat keys)
+rss-feeds.json           — optional RSS feeds (small list; many job sites block bots)
+fallback-jobs.json       — web_search results written by agent before each run (primary source)
 scoring-criteria.md      — human-readable summary of scoring rules
 resumes/                 — uploaded resume files
 .secrets/                — Google service account key (if configured)
 runs/                    — JSON output from each job-runner run
-job-runner.mjs           — fetches feeds, scores jobs, writes to Sheets
+job-runner.mjs           — merges RSS + fallback, scores jobs, writes to Sheets
 notify-digest.mjs        — reads unnotified 7+ jobs from Sheets and formats digest
 ```
 

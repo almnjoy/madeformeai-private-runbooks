@@ -19,6 +19,7 @@ const SHEET_ID         = profile.sheetId || '';
 const TAB              = profile.sheetTab || 'Jobs';
 const CREDS_PATH       = profile.credsPath || './.secrets/google-sheets.json';
 const FEEDS_PATH       = profile.feedsPath || './rss-feeds.json';
+const FALLBACK_PATH    = profile.fallbackPath || './fallback-jobs.json';
 const NOTIFY_THRESHOLD = profile.notifyThreshold ?? 7;
 const OWNER_NAME       = profile.ownerName || 'the job seeker';
 const GREEN_FLAGS      = (profile.greenFlags || []).map(s => s.toLowerCase());
@@ -149,6 +150,17 @@ async function getExistingKeys() {
   for (const row of data.values || []) { if (row[0]) ids.add(row[0]); if (row[3]) urls.add(row[3]); }
   return { ids, urls };
 }
+async function ensureHeaderRow() {
+  if (!USE_SHEETS) return;
+  const range = `${encodeURIComponent(TAB)}!A1:L1`;
+  const data  = await sheetsReq('GET', `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`);
+  const first = (data.values || [])[0];
+  if (!first || !first[0] || first[0].toLowerCase() !== 'id') {
+    await sheetsReq('POST', `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(TAB)}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+      {values: [['ID','Title','Company','URL','Source','Posted','Score','Reasoning','CoverLetter','Status','DateAdded','Notified']]});
+    console.log('SHEET_HEADER written');
+  }
+}
 async function appendRows(rows) {
   if (!rows.length || !USE_SHEETS) return null;
   return sheetsReq('POST',`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(TAB)}!A:L:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{values:rows});
@@ -158,20 +170,45 @@ async function appendRows(rows) {
 // Main
 // ---------------------------------------------------------------------------
 async function main() {
-  const feeds    = JSON.parse(fs.readFileSync(FEEDS_PATH, 'utf8'));
+  const feeds    = fs.existsSync(FEEDS_PATH) ? JSON.parse(fs.readFileSync(FEEDS_PATH, 'utf8')) : [];
+  await ensureHeaderRow();
   const existing = await getExistingKeys();
   const seenThisRun = new Set();
   const all = [];
 
+  // Try RSS feeds (nice-to-have — many job sites block bots)
   for (const feed of feeds) {
     try {
-      const res = await fetch(feed.url, {headers:{'user-agent':'OpenClaw Job Agent/1.0'}});
+      const res = await fetch(feed.url, {headers:{'user-agent':'Mozilla/5.0 (compatible; JobAgent/1.0)'}});
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       const xml = await res.text();
       all.push(...parseFeed(xml, feed.name));
       await sleep(500);
     } catch (e) {
       console.error(`FEED_ERROR ${feed.name}: ${e.message}`);
+    }
+  }
+
+  // Always merge fallback-jobs.json — agent populates this via web_search before each run.
+  // This is the primary source for non-tech / non-remote jobs and when RSS is blocked.
+  if (fs.existsSync(FALLBACK_PATH)) {
+    try {
+      const fallbacks = JSON.parse(fs.readFileSync(FALLBACK_PATH, 'utf8'));
+      if (Array.isArray(fallbacks) && fallbacks.length) {
+        console.log(`FALLBACK_MERGE: adding ${fallbacks.length} entries from ${FALLBACK_PATH}`);
+        for (const job of fallbacks) {
+          all.push({
+            title:       job.title       || '',
+            company:     job.company     || '',
+            url:         job.url         || '',
+            source:      job.source      || 'web-search',
+            posted:      job.posted      || '',
+            description: job.description || ''
+          });
+        }
+      }
+    } catch (e) {
+      console.error(`FALLBACK_PARSE_ERROR: ${e.message}`);
     }
   }
 
