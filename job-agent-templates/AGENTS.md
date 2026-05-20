@@ -60,7 +60,7 @@ Ask the user: "Would you like me to track all found jobs in a Google Sheet so yo
 If yes:
 - Walk the user through: create a Google Cloud project → enable Sheets API → create a service account → download the JSON key → share the target Google Sheet with the service account email (editor access).
 - Ask for the Sheet ID (the long string in the sheet URL between /d/ and /edit).
-- Ask for the tab name (default: Sheet1).
+- Ask for the tab name. IMPORTANT: Google Sheets defaults to "Sheet1" — confirm this with the user. Most users will not have renamed it. Only change it if they say they used a different name.
 - Ask the user to upload the service account JSON key file. Save it to `.secrets/google-sheets.json`.
 - Set `useSheets: true` in job-profile.json.
 
@@ -112,7 +112,7 @@ Once all info is collected:
   ],
   "useSheets": false,
   "sheetId": "",
-  "sheetTab": "Jobs",
+  "sheetTab": "Sheet1",
   "credsPath": ".secrets/google-sheets.json",
   "notificationChannels": []
 }

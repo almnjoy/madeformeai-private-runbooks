@@ -16,7 +16,7 @@ if (!fs.existsSync(PROFILE_PATH)) {
 const profile = JSON.parse(fs.readFileSync(PROFILE_PATH, 'utf8'));
 
 const SHEET_ID         = profile.sheetId || '';
-const TAB              = profile.sheetTab || 'Jobs';
+const TAB              = profile.sheetTab || 'Sheet1'; // Google default tab name
 const CREDS_PATH       = profile.credsPath || './.secrets/google-sheets.json';
 const FEEDS_PATH       = profile.feedsPath || './rss-feeds.json';
 const FALLBACK_PATH    = profile.fallbackPath || './fallback-jobs.json';
@@ -142,28 +142,39 @@ async function sheetsReq(method, url, body) {
   if (!res.ok) throw new Error(`Sheets ${method} ${res.status}: ${JSON.stringify(json).slice(0,800)}`);
   return json;
 }
+// Build an A1-notation range string. Tab names with spaces/special chars get
+// single-quoted per the Sheets API spec. Do NOT encodeURIComponent the result —
+// the Sheets API expects literal ! and : in the URL path.
+function sheetRange(tab, cells) {
+  const name = /^[A-Za-z0-9_]+$/.test(tab) ? tab : `'${tab.replace(/'/g, "''")}'`;
+  return `${name}!${cells}`;
+}
+
 async function getExistingKeys() {
   if (!USE_SHEETS) return { ids: new Set(), urls: new Set() };
-  const range = `${encodeURIComponent(TAB)}!A2:D`;
-  const data  = await sheetsReq('GET',`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`);
+  const data = await sheetsReq('GET',
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${sheetRange(TAB,'A2:D')}`);
   const ids = new Set(), urls = new Set();
   for (const row of data.values || []) { if (row[0]) ids.add(row[0]); if (row[3]) urls.add(row[3]); }
   return { ids, urls };
 }
 async function ensureHeaderRow() {
   if (!USE_SHEETS) return;
-  const range = `${encodeURIComponent(TAB)}!A1:L1`;
-  const data  = await sheetsReq('GET', `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${range}`);
+  const data = await sheetsReq('GET',
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${sheetRange(TAB,'A1:L1')}`);
   const first = (data.values || [])[0];
   if (!first || !first[0] || first[0].toLowerCase() !== 'id') {
-    await sheetsReq('POST', `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(TAB)}!A1:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    await sheetsReq('POST',
+      `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${sheetRange(TAB,'A1')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
       {values: [['ID','Title','Company','URL','Source','Posted','Score','Reasoning','CoverLetter','Status','DateAdded','Notified']]});
     console.log('SHEET_HEADER written');
   }
 }
 async function appendRows(rows) {
   if (!rows.length || !USE_SHEETS) return null;
-  return sheetsReq('POST',`https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${encodeURIComponent(TAB)}!A:L:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,{values:rows});
+  return sheetsReq('POST',
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/${sheetRange(TAB,'A:L')}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    {values: rows});
 }
 
 // ---------------------------------------------------------------------------
